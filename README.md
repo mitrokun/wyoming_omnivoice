@@ -6,7 +6,9 @@ Install libs:
 ```
 pip install omnivoice wyoming sentence-stream soundfile eng-to-ipa num2words
 ```
-The last two libraries are used only for the Russian language and are activated by the `--language ru` key.
+The last two libraries are used to enable the normalization block and are activated via the `--language` key with the value `ru`.
+
+If the `--language` key is omitted, the model automatically detects the language (default behavior). You can also explicitly specify the language. This can improve quality, but it reduces multilingual support (especially when using different reference voices for different languages).
 
 
 Run:
