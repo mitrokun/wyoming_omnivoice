@@ -11,9 +11,9 @@ The last two libraries are used only for the Russian language and are activated 
 
 Run:
 ```
-python -m wyoming_omni --uri tcp://0.0.0.0:10204 --voice "C:\VS\olga.wav" "Reference text for Olga"
+python -m wyoming_omnivoice --uri tcp://0.0.0.0:10204 --voice "C:\VS\olga.wav" "Reference text for Olga"
 
-python3 -m wyoming_omni --uri tcp://0.0.0.0:10204 \
+python3 -m wyoming_omnivoice --uri tcp://0.0.0.0:10204 \
   --voice "/home/user/voices/olga.wav" "Reference text for Olga"
 ```
 
