@@ -14,12 +14,12 @@ from .handler import TTSEventHandler
 _LOGGER = logging.getLogger(__name__)
 
 HA_LANGUAGES = [
-    "af", "ar", "bg", "bn", "ca", "cs", "cy", "da", "de_CH", "de", "el",
-    "en", "en_US", "en_GB", "es", "et", "eu", "fa", "fi", "fr", "ga", "gl",
+    "af", "ar", "bg", "bn", "ca", "cs", "cy", "da", "de-CH", "de", "el",
+    "en", "en-US", "en-GB", "es", "et", "eu", "fa", "fi", "fr", "ga", "gl",
     "gu", "he", "hi", "hr", "hu", "hy", "id", "is", "it", "ja", "ka", "kn",
     "ko", "kw", "lb", "lt", "lv", "ml", "mn", "mr", "ms", "nb", "ne", "nl",
-    "pl", "pt_BR", "pt", "ro", "ru_RU", "sk", "sl", "sr", "sv", "sw",
-    "ta", "te", "th", "tr", "uk", "ur", "vi", "zh_CN", "zh_HK", "zh_TW"
+    "pl", "pt-BR", "pt", "ro", "ru-RU", "sk", "sl", "sr", "sv", "sw", "ta",
+    "te", "th", "tr", "uk", "ur", "vi", "zh-CN", "zh-HK", "zh-TW"
 ]
 
 
