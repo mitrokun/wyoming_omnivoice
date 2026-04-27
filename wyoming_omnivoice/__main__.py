@@ -22,7 +22,6 @@ HA_LANGUAGES = [
     "te", "th", "tr", "uk", "ur", "vi", "zh-CN", "zh-HK", "zh-TW"
 ]
 
-logging.getLogger("numba").setLevel(logging.WARNING)
 
 async def main() -> None:
     """Main entry point."""
@@ -58,6 +57,8 @@ async def main() -> None:
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format)
 
+    
+    logging.getLogger("numba").setLevel(logging.WARNING)
     logging.getLogger("omnivoice").setLevel(logging.INFO)
     _LOGGER.debug(args)
 
