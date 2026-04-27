@@ -40,19 +40,22 @@ class TTSEventHandler(AsyncEventHandler):
         self.wyoming_info_event = wyoming_info.event()
         self.tts_engine = tts_engine
         self.normalizer = TextNormalizer()
+        
+        self.min_chars = getattr(cli_args, "min_characters", 20)
+        self.max_chars = getattr(cli_args, "max_characters", 200)
 
         self.sbd: SentenceBoundaryDetector | None = None
         self._synthesize: Synthesize | None = None
         self._is_streaming = False
         self._audio_started = False
+        self._is_first_batch = True  # Переименовано для ясности
         
         self._sentence_buffer: str = ""
-        _LOGGER.debug("Text normalizer initialized.")
+        _LOGGER.debug(f"Handler: Min chars: {self.min_chars}, Max chars: {self.max_chars}")
 
     async def handle_event(self, event: Event) -> bool:
         if Describe.is_type(event.type):
             await self.write_event(self.wyoming_info_event)
-            _LOGGER.debug("Sent info to Wyoming client")
             return True
 
         try:
@@ -71,18 +74,18 @@ class TTSEventHandler(AsyncEventHandler):
             return True
 
         except Exception as err:
-            _LOGGER.exception("Error processing event: %s", event)
-            await self.write_event(Error(text=str(err), code=err.__class__.__name__))
+            _LOGGER.exception("Error processing event")
+            await self.write_event(Error(text=str(err), code=err.__class__.__name__).event())
             self._is_streaming = False
         
         return True
 
     async def _handle_stream_start(self, stream_start: SynthesizeStart):
-        _LOGGER.debug("Text stream started")
         self.sbd = SentenceBoundaryDetector()
         self._synthesize = Synthesize(text="", voice=stream_start.voice)
         self._is_streaming = True
         self._audio_started = False
+        self._is_first_batch = True
         self._sentence_buffer = ""
 
     async def _process_sentence(self, sentence: str):
@@ -95,40 +98,46 @@ class TTSEventHandler(AsyncEventHandler):
         else:
             self._sentence_buffer = sentence
 
-        # Flush buffer if it has reached a reasonable length
-        if len(self._sentence_buffer) >= 15:
-            await self._flush_buffer()
+        current_len = len(self._sentence_buffer)
+
+        if self._is_first_batch:
+            if current_len >= self.min_chars:
+                _LOGGER.debug(f"First batch ready ({current_len} chars)")
+                await self._flush_buffer()
+                self._is_first_batch = False
+        else:
+            if current_len >= self.max_chars:
+                _LOGGER.debug(f"Subsequent batch ready ({current_len} chars)")
+                await self._flush_buffer()
 
     async def _flush_buffer(self):
         text_to_synthesize = self._sentence_buffer.strip()
         self._sentence_buffer = ""
-
         if text_to_synthesize:
             await self._synthesize_and_stream_audio(text_to_synthesize)
 
     async def _handle_stream_chunk(self, stream_chunk: SynthesizeChunk):
-        assert self.sbd is not None, "SentenceBoundaryDetector not initialized"
+        assert self.sbd is not None
         for sentence in self.sbd.add_chunk(stream_chunk.text):
             await self._process_sentence(sentence)
 
     async def _handle_stream_stop(self):
-        assert self.sbd is not None, "SentenceBoundaryDetector not initialized"
+        assert self.sbd is not None
         remaining_text = self.sbd.finish()
         if remaining_text:
             await self._process_sentence(remaining_text)
-
         await self._flush_buffer()
 
         if self._audio_started:
             await self.write_event(AudioStop().event())
-        
         await self.write_event(SynthesizeStopped().event())
-        _LOGGER.debug("Text stream stopped")
         self._is_streaming = False
 
     async def _handle_single_synthesize(self, synthesize: Synthesize):
         self._audio_started = False
+        self._is_first_batch = True
         self._sentence_buffer = ""
+        self._synthesize = synthesize 
         
         sbd = SentenceBoundaryDetector()
         sentences = list(sbd.add_chunk(synthesize.text))
@@ -136,43 +145,32 @@ class TTSEventHandler(AsyncEventHandler):
         if final_text:
             sentences.append(final_text)
 
-        if not sentences:
-            await self.write_event(AudioStop().event())
-            return
-            
         for sentence in sentences:
             await self._process_sentence(sentence)
-
         await self._flush_buffer()
 
         if self._audio_started:
             await self.write_event(AudioStop().event())
 
-    async def _synthesize_and_stream_audio(self, text: str, voice_override: Synthesize.voice = None):
-        if self._synthesize and self._synthesize.voice:
-             voice_name = self._synthesize.voice.name
-        elif voice_override:
-             voice_name = voice_override.name
-        else:
-             _LOGGER.warning("No voice selected for synthesis.")
+    async def _synthesize_and_stream_audio(self, text: str):
+        if not self._synthesize or not self._synthesize.voice:
              return
         
-        # Smart normalizer selection: apply only if language is ru, 
-        # or if language is auto and text contains Cyrillic characters.
+        voice_name = self._synthesize.voice.name
         lang = self.cli_args.language.lower()
-        if lang in ["ru", "rus", "russian", "ru-ru", "ru_ru"] or (lang == "auto" and re.search(r'[а-яА-ЯёЁ]', text)):
+        
+        if lang in ["ru", "rus", "russian", "ru-ru"] or (lang == "auto" and re.search(r'[а-яА-ЯёЁ]', text)):
             processed_text = self.normalizer.normalize(text)
         else:
-            processed_text = text # Leave text as is (e.g., for pure English)
+            processed_text = text
 
-        if not processed_text:
+        if not processed_text or not processed_text.strip():
             return
 
         if self.cli_args.auto_punctuation and processed_text[-1] not in self.cli_args.auto_punctuation:
             processed_text += self.cli_args.auto_punctuation[0]
 
-        _LOGGER.debug("Synthesizing text: '%s'", processed_text)
-
+        _LOGGER.debug("Synthesizing batch: '%s'", processed_text)
         start_time = time.monotonic()
 
         loop = asyncio.get_running_loop()
@@ -180,13 +178,11 @@ class TTSEventHandler(AsyncEventHandler):
             None, self.tts_engine.synthesize, processed_text, voice_name
         )
 
-        end_time = time.monotonic()
-        elapsed_time = end_time - start_time
-        char_count = len(processed_text)
+        elapsed_time = time.monotonic() - start_time
+        audio_duration = len(final_wave) / sample_rate
+        rtfx = audio_duration / max(elapsed_time, 1e-6)
 
-        _LOGGER.debug(
-            f"Generation finished. Characters: {char_count}, Time taken: {elapsed_time:.4f} sec"
-        )
+        _LOGGER.debug(f"Done: RTFX: {rtfx:.2f}x [{audio_duration:.2f}s audio / {elapsed_time:.2f}s calc]")
         
         wav_buffer = io.BytesIO()
         sf.write(wav_buffer, final_wave, sample_rate, format='WAV', subtype='PCM_16')

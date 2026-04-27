@@ -22,6 +22,7 @@ HA_LANGUAGES = [
     "te", "th", "tr", "uk", "ur", "vi", "zh-CN", "zh-HK", "zh-TW"
 ]
 
+logging.getLogger("numba").setLevel(logging.WARNING)
 
 async def main() -> None:
     """Main entry point."""
@@ -47,6 +48,8 @@ async def main() -> None:
     parser.add_argument("--speed", type=float, default=1.0, help="Synthesis speed (>1 faster, <1 slower)")
     
     parser.add_argument("--auto-punctuation", default=".?!", help="Auto-punctuation characters")
+    parser.add_argument("--min-characters", type=int, default=20, help="Min characters to buffer before the FIRST synthesis request (default 20)")
+    parser.add_argument("--max-characters", type=int, default=200, help="Max character limit for combining sentences after the first request (default 200)")
     parser.add_argument("--samples-per-chunk", type=int, default=1024, help="Samples per audio chunk")
     parser.add_argument("--debug", action="store_true", help="Enable DEBUG logging")
     parser.add_argument("--log-format", default=logging.BASIC_FORMAT, help="Log format")
@@ -54,6 +57,8 @@ async def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format)
+
+    logging.getLogger("omnivoice").setLevel(logging.INFO)
     _LOGGER.debug(args)
 
     wyoming_voices = []

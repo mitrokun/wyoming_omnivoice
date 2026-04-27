@@ -89,14 +89,12 @@ class OmniVoiceEngine:
             speed=self.speed
         )
         
-        # Extract the first tensor and convert to NumPy array
-        final_wave_tensor = audio_tensors[0].squeeze() 
+        res = audio_tensors[0]
         
-        # Move to CPU if necessary before converting to NumPy
-        if final_wave_tensor.is_cuda or final_wave_tensor.device.type == 'mps':
-            final_wave_tensor = final_wave_tensor.cpu()
-            
-        final_wave = final_wave_tensor.numpy()
+        if isinstance(res, torch.Tensor):
+            final_wave = res.detach().cpu().numpy().squeeze()
+        else:
+            final_wave = np.array(res).squeeze()
         
         # OmniVoice native sampling rate is 24kHz
         final_sample_rate = 24000
