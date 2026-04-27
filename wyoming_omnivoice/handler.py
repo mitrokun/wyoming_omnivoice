@@ -48,7 +48,7 @@ class TTSEventHandler(AsyncEventHandler):
         self._synthesize: Synthesize | None = None
         self._is_streaming = False
         self._audio_started = False
-        self._is_first_batch = True  # Переименовано для ясности
+        self._is_first_batch = True
         
         self._sentence_buffer: str = ""
         _LOGGER.debug(f"Handler: Min chars: {self.min_chars}, Max chars: {self.max_chars}")
@@ -93,22 +93,37 @@ class TTSEventHandler(AsyncEventHandler):
         if not sentence:
             return
 
+        if self._is_first_batch:
+
+            if self._sentence_buffer:
+                self._sentence_buffer += " " + sentence
+            else:
+                self._sentence_buffer = sentence
+            
+            if len(self._sentence_buffer) >= self.min_chars:
+                _LOGGER.debug(f"First batch ready ({len(self._sentence_buffer)} chars)")
+                await self._flush_buffer()
+                self._is_first_batch = False
+            return
+
+        current_buffer_len = len(self._sentence_buffer)
+        new_sentence_len = len(sentence)
+
+        if new_sentence_len >= self.max_chars:
+            if self._sentence_buffer:
+                await self._flush_buffer()
+            _LOGGER.debug(f"Large sentence detected ({new_sentence_len} chars). Sending immediately.")
+            await self._synthesize_and_stream_audio(sentence)
+            return
+
+        if current_buffer_len > 0 and (current_buffer_len + new_sentence_len + 1) > self.max_chars:
+            _LOGGER.debug(f"Buffer full ({current_buffer_len} chars). Flushing before adding new sentence.")
+            await self._flush_buffer()
+
         if self._sentence_buffer:
             self._sentence_buffer += " " + sentence
         else:
             self._sentence_buffer = sentence
-
-        current_len = len(self._sentence_buffer)
-
-        if self._is_first_batch:
-            if current_len >= self.min_chars:
-                _LOGGER.debug(f"First batch ready ({current_len} chars)")
-                await self._flush_buffer()
-                self._is_first_batch = False
-        else:
-            if current_len >= self.max_chars:
-                _LOGGER.debug(f"Subsequent batch ready ({current_len} chars)")
-                await self._flush_buffer()
 
     async def _flush_buffer(self):
         text_to_synthesize = self._sentence_buffer.strip()
@@ -170,7 +185,7 @@ class TTSEventHandler(AsyncEventHandler):
         if self.cli_args.auto_punctuation and processed_text[-1] not in self.cli_args.auto_punctuation:
             processed_text += self.cli_args.auto_punctuation[0]
 
-        _LOGGER.debug("Synthesizing batch: '%s'", processed_text)
+        _LOGGER.debug("Synth: '%s'", processed_text)
         start_time = time.monotonic()
 
         loop = asyncio.get_running_loop()
@@ -182,7 +197,7 @@ class TTSEventHandler(AsyncEventHandler):
         audio_duration = len(final_wave) / sample_rate
         rtfx = audio_duration / max(elapsed_time, 1e-6)
 
-        _LOGGER.debug(f"Done: RTFX: {rtfx:.2f}x [{audio_duration:.2f}s audio / {elapsed_time:.2f}s calc]")
+        _LOGGER.debug(f"Done: RTFX: {rtfx:.2f}x [{audio_duration:.2f}s / {elapsed_time:.2f}s]")
         
         wav_buffer = io.BytesIO()
         sf.write(wav_buffer, final_wave, sample_rate, format='WAV', subtype='PCM_16')
