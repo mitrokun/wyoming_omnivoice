@@ -4,7 +4,7 @@ Prepare the environment according to the [documentation](https://github.com/k2-f
 
 Install libs:
 ```
-pip install omnivoice wyoming sentence-stream soundfile eng-to-ipa num2words
+pip install omnivoice wyoming sentence-stream soundfile num2words
 ```
 The last two libraries are used to enable the normalization block and are activated via the `--language` key with the value `ru`.
 
